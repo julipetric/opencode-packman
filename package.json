@@ -1,6 +1,6 @@
 {
   "name": "opencode-packman",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Skill pack manager for OpenCode — install, enable, disable, and organize skill collections",
   "type": "module",
   "main": "src/index.ts",

@@ -1,7 +1,7 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
-import { join, resolve, isAbsolute } from "path"
+import { join, resolve, isAbsolute, basename, relative } from "path"
 import { homedir } from "os"
-import { existsSync, mkdirSync, readdirSync, rmSync, copyFileSync } from "fs"
+import { existsSync, mkdirSync, readdirSync, rmSync, copyFileSync, statSync } from "fs"
 
 const CONFIG_DIR = join(homedir(), ".config", "opencode")
 const VAULT_DIR = join(CONFIG_DIR, "skill-packs")
@@ -16,6 +16,12 @@ interface PackRecord {
   enabled: boolean
   path: string
   installed_at: string
+}
+
+interface DiscoveredSkillPath {
+  containerPath: string
+  skillCount: number
+  skillNames: string[]
 }
 
 async function readJSON(path: string): Promise<Record<string, unknown> | null> {
@@ -57,6 +63,59 @@ function countSkills(dir: string): number {
   return count
 }
 
+function discoverSkillPaths(packDir: string): DiscoveredSkillPath[] {
+  if (!existsSync(packDir)) return []
+
+  const containers = new Map<string, string[]>()
+
+  function walk(dir: string) {
+    const entries = readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      const p = join(dir, entry.name)
+      if (entry.isDirectory()) walk(p)
+      else if (entry.name === "SKILL.md") {
+        const skillDir = resolve(p, "..")
+        const skillName = basename(skillDir)
+        const containerPath = resolve(skillDir, "..")
+        const existing = containers.get(containerPath) || []
+        existing.push(skillName)
+        containers.set(containerPath, existing)
+      }
+    }
+  }
+  walk(packDir)
+
+  const results: DiscoveredSkillPath[] = []
+  for (const [containerPath, skillNames] of containers.entries()) {
+    results.push({
+      containerPath,
+      skillCount: skillNames.length,
+      skillNames: [...new Set(skillNames)].sort(),
+    })
+  }
+
+  results.sort((a, b) => {
+    const aSkills = a.containerPath.endsWith("skills") || a.containerPath.endsWith("skills\\") ? 0 : 1
+    const bSkills = b.containerPath.endsWith("skills") || b.containerPath.endsWith("skills\\") ? 0 : 1
+    if (aSkills !== bSkills) return aSkills - bSkills
+    return b.skillCount - a.skillCount
+  })
+
+  return results
+}
+
+function formatPathForDisplay(packDir: string, containerPath: string): string {
+  const rel = relative(packDir, containerPath)
+  if (!rel || rel === "." || rel.startsWith("..")) return containerPath
+  return `~/.config/opencode/skill-packs/${basename(packDir)}/${rel.replace(/\\/g, "/")}`
+}
+
+function getVaultSubdir(packDir: string, containerPath: string): string {
+  const rel = relative(packDir, containerPath)
+  if (!rel || rel === "." || rel.startsWith("..")) return containerPath
+  return join(VAULT_DIR, basename(packDir), rel)
+}
+
 async function readRegistry(): Promise<Record<string, PackRecord>> {
   const data = await readJSON(REGISTRY_PATH)
   if (data && typeof data === "object") return data as Record<string, PackRecord>
@@ -92,7 +151,7 @@ export const PackmanPlugin: Plugin = async () => {
   return {
     tool: {
       packman_install: tool({
-        description: "Install a skill pack from git, npm, or local source. Stores it in ~/.config/opencode/skill-packs/<name>/ in its own sub-folder.",
+        description: "Install a skill pack from git, npm, or local source. Stores it in ~/.config/opencode/skill-packs/<name>/ in its own sub-folder. Automatically discovers skill directories.",
         args: {
           name: tool.schema.string().describe("Name for the pack (e.g. superpowers, gsd)"),
           source: tool.schema.string().describe("Source URL or path. Examples: git+https://github.com/obra/superpowers.git, npm:some-pack, /local/path"),
@@ -142,17 +201,30 @@ export const PackmanPlugin: Plugin = async () => {
             }
             await writeRegistry(registry)
 
-            const skillCount = countSkills(packDir)
-            return `Installed pack "${name}" from ${source} to ${packDir}. Found ${skillCount} skills. Use enable-pack ${name} to activate it.`
+            const discovered = discoverSkillPaths(packDir)
+            const totalSkillCount = discovered.reduce((sum, d) => sum + d.skillCount, 0)
+
+            let msg = `Installed pack "${name}" from ${source} to ${packDir}. Found ${totalSkillCount} skill(s) across ${discovered.length} path(s).\n`
+            if (discovered.length > 0) {
+              msg += "\nDiscovered skill paths:\n"
+              for (const d of discovered) {
+                const pathDisplay = formatPathForDisplay(packDir, d.containerPath)
+                msg += `  ${pathDisplay} (${d.skillCount} skills: ${d.skillNames.join(", ")})\n`
+              }
+              msg += `\nActivate: use "enable-pack ${name}" to add the path(s) to skills.paths.`
+            } else {
+              msg += "\nNo SKILL.md files found in this pack. Verify the source contains compatible skills."
+            }
+            return msg
           } catch (err) {
-            rmSync(packDir, { recursive: true, force: true })
+            if (existsSync(packDir)) rmSync(packDir, { recursive: true, force: true })
             return `Failed to install pack "${name}": ${err instanceof Error ? err.message : String(err)}`
           }
         },
       }),
 
       packman_enable: tool({
-        description: "Enable an installed pack by adding its path to skills.paths in opencode.json.",
+        description: "Enable an installed pack by auto-discovering its skill paths and adding them to skills.paths in opencode.json.",
         args: {
           name: tool.schema.string().describe("Name of installed pack to enable"),
         },
@@ -166,24 +238,46 @@ export const PackmanPlugin: Plugin = async () => {
           const skills = config.skills as Record<string, unknown>
           if (!Array.isArray(skills.paths)) skills.paths = []
 
-          const packPath = pack.path
-          if ((skills.paths as string[]).includes(packPath)) {
-            return `Pack "${args.name}" is already enabled.`
+          const discovered = discoverSkillPaths(pack.path)
+          if (discovered.length === 0) {
+            return `No skill paths found in pack "${args.name}". Verify the pack contains valid skills.`
           }
 
-          ;(skills.paths as string[]).push(packPath)
+          const pathsToAdd: string[] = []
+          for (const d of discovered) {
+            const vaultSubdir = getVaultSubdir(pack.path, d.containerPath)
+            if (!(skills.paths as string[]).includes(vaultSubdir)) {
+              pathsToAdd.push(vaultSubdir)
+            }
+          }
+
+          if (pathsToAdd.length === 0) {
+            return `Pack "${args.name}" is already enabled (all skill paths are already in skills.paths).`
+          }
+
+          ;(skills.paths as string[]).push(...pathsToAdd)
           await writeJSON(CONFIG_PATH, config)
 
           pack.enabled = true
           registry[args.name] = pack
           await writeRegistry(registry)
 
-          return `Enabled pack "${args.name}". Skills from this pack will be available after restarting OpenCode.`
+          const pathDetails = pathsToAdd.map(p => {
+            const rel = relative(pack.path, p)
+            if (!rel || rel === "." || rel.startsWith("..")) return `  ${p}`
+            return `  ${basename(pack.path)}/${rel.replace(/\\/g, "/")}`
+          })
+
+          return [
+            `Enabled pack "${args.name}". Added ${pathsToAdd.length} path(s) to skills.paths:`,
+            ...pathDetails,
+            "Restart OpenCode for the change to take effect.",
+          ].join("\n")
         },
       }),
 
       packman_disable: tool({
-        description: "Disable an installed pack by removing its path from skills.paths in opencode.json.",
+        description: "Disable an installed pack by removing its skill paths from skills.paths in opencode.json.",
         args: {
           name: tool.schema.string().describe("Name of installed pack to disable"),
         },
@@ -195,7 +289,11 @@ export const PackmanPlugin: Plugin = async () => {
           const config = (await readJSON(CONFIG_PATH)) || {}
           const skills = config.skills as Record<string, unknown> | undefined
           if (skills && Array.isArray(skills.paths)) {
-            skills.paths = (skills.paths as string[]).filter((p: string) => p !== pack.path)
+            const discovered = discoverSkillPaths(pack.path)
+            const pathsToRemove = new Set(
+              discovered.map(d => getVaultSubdir(pack.path, d.containerPath))
+            )
+            skills.paths = (skills.paths as string[]).filter((p: string) => !pathsToRemove.has(p))
             await writeJSON(CONFIG_PATH, config)
           }
 
@@ -208,7 +306,7 @@ export const PackmanPlugin: Plugin = async () => {
       }),
 
       packman_list: tool({
-        description: "List all installed skill packs with their status and skill counts.",
+        description: "List all installed skill packs with their status, skill counts, and discovered paths.",
         args: {
           name: tool.schema.string().optional().describe("Optional: show details for a specific pack only"),
         },
@@ -219,15 +317,24 @@ export const PackmanPlugin: Plugin = async () => {
           if (args.name) {
             const pack = registry[args.name]
             if (!pack) return `Pack "${args.name}" is not installed.`
-            return [
+            const discovered = discoverSkillPaths(pack.path)
+            const lines = [
               `Pack: ${args.name}`,
               `  Source: ${pack.source}`,
               `  Type: ${pack.type}`,
               `  Status: ${pack.enabled ? "enabled" : "disabled"}`,
               `  Path: ${pack.path}`,
-              `  Skills: ${countSkills(pack.path)}`,
               `  Installed: ${pack.installed_at}`,
-            ].join("\n")
+            ]
+            if (discovered.length > 0) {
+              lines.push(`  Skill paths:`)
+              for (const d of discovered) {
+                lines.push(`    ${formatPathForDisplay(pack.path, d.containerPath)} (${d.skillCount} skills: ${d.skillNames.join(", ")})`)
+              }
+            } else {
+              lines.push(`  Skills: none found`)
+            }
+            return lines.join("\n")
           }
 
           if (names.length === 0) {
@@ -236,7 +343,9 @@ export const PackmanPlugin: Plugin = async () => {
 
           const lines = names.map(n => {
             const p = registry[n]
-            return `  ${p.enabled ? "✓" : "○"} ${n} — ${countSkills(p.path)} skills (${p.type})`
+            const discovered = discoverSkillPaths(p.path)
+            const total = discovered.reduce((s, d) => s + d.skillCount, 0)
+            return `  ${p.enabled ? "✓" : "○"} ${n} — ${total} skills (${p.type})`
           })
           return `Installed packs (${names.length}):\n${lines.join("\n")}\n\nUse packman_enable <name> or packman_disable <name> to toggle.`
         },
@@ -256,7 +365,11 @@ export const PackmanPlugin: Plugin = async () => {
             const config = (await readJSON(CONFIG_PATH)) || {}
             const skills = config.skills as Record<string, unknown> | undefined
             if (skills && Array.isArray(skills.paths)) {
-              skills.paths = (skills.paths as string[]).filter((p: string) => p !== pack.path)
+              const discovered = discoverSkillPaths(pack.path)
+              const pathsToRemove = new Set(
+                discovered.map(d => getVaultSubdir(pack.path, d.containerPath))
+              )
+              skills.paths = (skills.paths as string[]).filter((p: string) => !pathsToRemove.has(p))
               await writeJSON(CONFIG_PATH, config)
             }
           }
@@ -300,7 +413,9 @@ export const PackmanPlugin: Plugin = async () => {
               await $`cp -r ${src}/. ${pack.path}`.quiet()
             }
 
-            return `Updated pack "${args.name}". Skills found: ${countSkills(pack.path)}`
+            const discovered = discoverSkillPaths(pack.path)
+            const total = discovered.reduce((s, d) => s + d.skillCount, 0)
+            return `Updated pack "${args.name}". Found ${total} skill(s).`
           } catch (err) {
             return `Failed to update pack "${args.name}": ${err instanceof Error ? err.message : String(err)}`
           }

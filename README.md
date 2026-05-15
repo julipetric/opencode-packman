@@ -12,26 +12,27 @@ Packman gives you:
 - **Organized sub-folders** — each pack installs into its own directory (`skill-packs/superpowers/`, `skill-packs/gsd/`)
 - **Source-agnostic** — install from git repos, npm packages, or local paths
 - **User-level** — one install, available across all projects
+- **Auto-discovery** — scans repos for SKILL.md files and computes the correct path(s) to add to `skills.paths`, handling both flat and nested skill layouts
 
 ## How It Works
 
 ```
 ~/.config/opencode/
   opencode.json              ← skills.paths controls which packs are active
-  skill-packs.json           ← registry of installed packs
+  skill-packs.json           ← registry of installed packs (auto-created)
   skill-packs/               ← vault with organized pack contents
     superpowers/
       skills/
         brainstorming/SKILL.md
         test-driven-development/SKILL.md
         ...
-    gsd/
-      skills/
-        ...
+    impeccable/
+      .opencode/skills/
+        impeccable/SKILL.md  ← auto-discovered: nested skills work
 ```
 
-**Enable** = add pack path to `skills.paths` in `opencode.json`.  
-**Disable** = remove it. Files stay in the vault — no data loss.
+**Enable** = auto-discover skill paths and add them to `skills.paths` in `opencode.json`.  
+**Disable** = remove discovered paths. Files stay in the vault — no data loss.
 
 ## Installation
 
@@ -53,18 +54,16 @@ Restart OpenCode. The `packman` skill is now available.
 
 ## Usage
 
-Ask your agent to manage packs conversationally:
+Tell your agent what to do in plain language:
 
-```
-Install pack superpowers from git+https://github.com/obra/superpowers.git
-Enable pack superpowers
-Disable pack GSD
-List packs
-Update pack superpowers
-Uninstall pack GSD
-```
-
-The packman skill handles the rest.
+| You say | What happens |
+|---------|-------------|
+| "Install pack superpowers from git+https://github.com/obra/superpowers.git" | Clones repo, discovers skill paths, registers pack |
+| "Enable pack superpowers" | Auto-detects skill paths, adds to `opencode.json` |
+| "Disable pack GSD" | Removes skill paths from `opencode.json` |
+| "List packs" | Shows installed packs with status and skill counts |
+| "Update pack superpowers" | Pulls latest changes |
+| "Uninstall pack GSD" | Disables, deletes files, removes registry entry |
 
 ### Supported Sources
 
@@ -76,9 +75,27 @@ The packman skill handles the rest.
 | Local path | `~/my-skills` |
 | Relative path | `./dev-skills` |
 
+## Skill Path Auto-Discovery
+
+Packs can have different directory layouts. Packman handles both:
+
+**Standard** (superpowers-style):
+```
+skill-packs/superpowers/skills/brainstorming/SKILL.md
+```
+→ Adds `skills/` to `skills.paths`
+
+**Nested** (impeccable-style):
+```
+skill-packs/impeccable/.opencode/skills/impeccable/SKILL.md
+```
+→ Adds `.opencode/skills/` to `skills.paths`
+
+Enable adds all discovered paths. Disable removes all of them. No manual path hunting needed.
+
 ## Registry
 
-Installed packs are tracked in `~/.config/opencode/skill-packs.json`:
+Installed packs are tracked in `~/.config/opencode/skill-packs.json` (auto-created on first install):
 
 ```json
 {
@@ -91,6 +108,15 @@ Installed packs are tracked in `~/.config/opencode/skill-packs.json`:
   }
 }
 ```
+
+## Changelog
+
+### 2.0.0
+- **Skill path auto-discovery**: packs no longer assumed flat `skills/` layout — nested structures (`.opencode/skills/`, etc.) are detected and handled automatically
+- **Smarter enable/disable**: uses discovered paths instead of blindly adding the repo root
+- **Rich install output**: shows every discovered path with per-path skill count and names
+- **Troubleshooting guide**: added in SKILL.md for common issues
+- **Docs clarity**: commands are now clearly documented as AI agent instructions, not shell commands
 
 ## License
 

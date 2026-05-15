@@ -1,0 +1,44 @@
+{
+  "name": "opencode-packman",
+  "version": "1.0.0",
+  "description": "Skill pack manager for OpenCode — install, enable, disable, and organize skill collections",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./skills/*": "./skills/*"
+  },
+  "files": [
+    "src",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "opencode",
+    "plugin",
+    "skills",
+    "pack-manager",
+    "superpowers"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/julipetric/opencode-packman.git"
+  },
+  "homepage": "https://github.com/julipetric/opencode-packman#readme",
+  "bugs": {
+    "url": "https://github.com/julipetric/opencode-packman/issues"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.15.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "typescript": "^6.0.3"
+  }
+}

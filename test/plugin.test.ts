@@ -203,6 +203,53 @@ describe("unexpected config", () => {
   })
 })
 
+describe("unreadable registry", () => {
+  const unreadable: [string, string][] = [
+    ["invalid JSON", '{ "team": '],
+    ["a JSON array", "[]"],
+    ["a JSON string", '"packs"'],
+    ["null", "null"],
+  ]
+
+  test.each(unreadable)("every tool reports an error and leaves all files untouched when the registry is %s", (_label, content) => {
+    const source = join(home, "team-skills")
+    writeSkill(source, "skills", "code-review")
+    const other = join(home, "other-skills")
+    writeSkill(other, "skills", "release-notes")
+    const base = join(vault(), "team")
+    writeConfig({ theme: "dark", skills: { paths: [join(base, "skills")] } })
+    runTools(["packman_install", { name: "team", source }])
+
+    const registryPath = join(configDir(), "skill-packs.json")
+    const configPath = join(configDir(), "opencode.json")
+    writeFileSync(registryPath, content)
+    const configBefore = readFileSync(configPath)
+
+    const steps = runTools(
+      ["packman_list", {}],
+      ["packman_list", { name: "team" }],
+      ["packman_install", { name: "other", source: other }],
+      ["packman_enable", { name: "team" }],
+      ["packman_disable", { name: "team" }],
+      ["packman_update", { name: "team" }],
+      ["packman_uninstall", { name: "team" }],
+    )
+
+    for (const step of steps) expect(step.output).toStartWith("Cannot read the pack registry:")
+    expect(readFileSync(registryPath).equals(Buffer.from(content))).toBe(true)
+    expect(existsSync(registryPath + ".bak")).toBe(false)
+    expect(readFileSync(configPath).equals(configBefore)).toBe(true)
+    expect(existsSync(join(base, "skills", "code-review", "SKILL.md"))).toBe(true)
+    expect(existsSync(join(vault(), "other"))).toBe(false)
+  })
+
+  test("a missing registry file is an empty registry", () => {
+    const [list] = runTools(["packman_list", {}])
+
+    expect(list.output).toStartWith("No packs installed.")
+  })
+})
+
 describe("guards", () => {
   test("installing an existing pack name is refused", () => {
     const source = join(home, "team-skills")

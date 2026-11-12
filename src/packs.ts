@@ -38,6 +38,24 @@ export function detectType(source: string): PackType {
   return "local"
 }
 
+/**
+ * Parses the text of a JSON file that must hold an object. Blank text is an empty object.
+ * Throws an error naming `path` when the text is not valid JSON or is not an object.
+ */
+export function parseJSONObject(text: string, path: string): Record<string, unknown> {
+  if (text.trim() === "") return {}
+  let data: unknown
+  try {
+    data = JSON.parse(text)
+  } catch (err) {
+    throw new Error(`${path} is not valid JSON (${err instanceof Error ? err.message : String(err)}). Fix the file or restore it from a backup, then try again.`)
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error(`${path} must contain a JSON object. Fix the file or restore it from a backup, then try again.`)
+  }
+  return data as Record<string, unknown>
+}
+
 /** Expands `~/`, keeps absolute paths and resolves relative ones against the working directory. */
 export function resolvePath(input: string, cwd: string = process.cwd()): string {
   if (input.startsWith("~/")) return join(homedir(), input.slice(2))

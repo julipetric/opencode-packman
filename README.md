@@ -135,7 +135,7 @@ Enable and disable work with either form of the `skills` option in `opencode.jso
 
 ## Registry
 
-Installed packs are tracked in `~/.config/opencode/skill-packs.json` (auto-created on first install):
+Installed packs are tracked in `~/.config/opencode/skill-packs.json` (auto-created on first install). If the file exists but is not a valid JSON object, every tool reports an error and changes nothing, so the record of installed packs is never overwritten:
 
 ```json
 {

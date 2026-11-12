@@ -186,6 +186,7 @@ Ask: "Uninstall pack <name>"
 | Skill not showing up after enable | Wrong path in `skills.paths` | Use `packman_enable` which auto-discovers paths. If still broken, call `packman_list(name="<pack>")` to see discovered paths |
 | Nested skill not detected | SKILL.md not in a named subdirectory | Skills should be at `<container>/<skill-name>/SKILL.md`, not directly in the pack root |
 | "Cannot enable/disable/uninstall pack" error | `opencode.json` is not valid JSON, or `skills` is neither an array of paths nor an object with a `paths` array | Fix `~/.config/opencode/opencode.json`; Packman leaves it untouched and does not change the registry |
+| "Cannot read the pack registry" error | `skill-packs.json` is not valid JSON or not a JSON object | Fix or restore `~/.config/opencode/skill-packs.json`; no tool changes anything until it is readable |
 | Registry file missing | Auto-created on first install | Run install again |
 | "already installed" error | Pack directory exists | Use `packman_update` or `packman_uninstall` first |
 

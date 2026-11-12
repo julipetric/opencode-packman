@@ -12,48 +12,36 @@ import {
   formatPathForDisplay,
   getVaultSubdir,
   packSkillPaths,
+  parseJSONObject,
   removeSkillPaths,
   resolvePath,
   type PackRecord,
 } from "./packs"
 
-async function readJSON(path: string): Promise<Record<string, unknown> | null> {
-  try {
-    const f = Bun.file(path)
-    if (await f.exists()) return (await f.json()) as Record<string, unknown>
-  } catch {}
-  return null
+/**
+ * Reads a JSON file that holds an object. A missing or empty file is an empty object; a file
+ * that is not a JSON object throws, so that the tools never overwrite a file they could not
+ * read.
+ */
+async function readJSONObject(path: string): Promise<Record<string, unknown>> {
+  const file = Bun.file(path)
+  if (!(await file.exists())) return {}
+  return parseJSONObject(await file.text(), path)
 }
 
-/**
- * Reads opencode.json. A missing or empty file is an empty config; a file that is not a JSON
- * object throws, so that the tools never overwrite a config they could not read.
- */
-async function readConfig(): Promise<Record<string, unknown>> {
-  const file = Bun.file(CONFIG_PATH)
-  if (!(await file.exists())) return {}
-  const text = await file.text()
-  if (text.trim() === "") return {}
-  let data: unknown
-  try {
-    data = JSON.parse(text)
-  } catch (err) {
-    throw new Error(`${CONFIG_PATH} is not valid JSON (${err instanceof Error ? err.message : String(err)}). Fix or remove it and try again.`)
-  }
-  if (!data || typeof data !== "object" || Array.isArray(data)) {
-    throw new Error(`${CONFIG_PATH} must contain a JSON object.`)
-  }
-  return data as Record<string, unknown>
-}
+const readConfig = () => readJSONObject(CONFIG_PATH)
 
 async function writeJSON(path: string, data: unknown): Promise<void> {
   await Bun.write(path, JSON.stringify(data, null, 2) + "\n")
 }
 
 async function readRegistry(): Promise<Record<string, PackRecord>> {
-  const data = await readJSON(REGISTRY_PATH)
-  if (data && typeof data === "object") return data as Record<string, PackRecord>
-  return {}
+  return (await readJSONObject(REGISTRY_PATH)) as Record<string, PackRecord>
+}
+
+/** Tool reply for a registry that could not be read; no tool writes the registry in that case. */
+function registryError(err: unknown): string {
+  return `Cannot read the pack registry: ${err instanceof Error ? err.message : String(err)}`
 }
 
 async function writeRegistry(data: Record<string, PackRecord>): Promise<void> {
@@ -87,6 +75,12 @@ export const PackmanPlugin: Plugin = async () => {
           const conflict = checkNameConflict(name)
           if (conflict) {
             return `Warning: pack name "${name}" conflicts with OpenCode built-in path at ${conflict}. Use a different name.`
+          }
+
+          try {
+            await readRegistry()
+          } catch (err) {
+            return registryError(err)
           }
 
           const type = detectType(source)
@@ -149,7 +143,12 @@ export const PackmanPlugin: Plugin = async () => {
           name: tool.schema.string().describe("Name of installed pack to enable"),
         },
         async execute(args) {
-          const registry = await readRegistry()
+          let registry: Record<string, PackRecord>
+          try {
+            registry = await readRegistry()
+          } catch (err) {
+            return registryError(err)
+          }
           const pack = registry[args.name]
           if (!pack) return `Pack "${args.name}" is not installed. Use packman_install first.`
 
@@ -205,7 +204,12 @@ export const PackmanPlugin: Plugin = async () => {
           name: tool.schema.string().describe("Name of installed pack to disable"),
         },
         async execute(args) {
-          const registry = await readRegistry()
+          let registry: Record<string, PackRecord>
+          try {
+            registry = await readRegistry()
+          } catch (err) {
+            return registryError(err)
+          }
           const pack = registry[args.name]
           if (!pack) return `Pack "${args.name}" is not installed.`
 
@@ -232,7 +236,12 @@ export const PackmanPlugin: Plugin = async () => {
           name: tool.schema.string().optional().describe("Optional: show details for a specific pack only"),
         },
         async execute(args) {
-          const registry = await readRegistry()
+          let registry: Record<string, PackRecord>
+          try {
+            registry = await readRegistry()
+          } catch (err) {
+            return registryError(err)
+          }
           const names = Object.keys(registry)
 
           if (args.name) {
@@ -278,7 +287,12 @@ export const PackmanPlugin: Plugin = async () => {
           name: tool.schema.string().describe("Name of pack to uninstall"),
         },
         async execute(args) {
-          const registry = await readRegistry()
+          let registry: Record<string, PackRecord>
+          try {
+            registry = await readRegistry()
+          } catch (err) {
+            return registryError(err)
+          }
           const pack = registry[args.name]
           if (!pack) return `Pack "${args.name}" is not installed.`
 
@@ -307,7 +321,12 @@ export const PackmanPlugin: Plugin = async () => {
           name: tool.schema.string().describe("Name of pack to update"),
         },
         async execute(args) {
-          const registry = await readRegistry()
+          let registry: Record<string, PackRecord>
+          try {
+            registry = await readRegistry()
+          } catch (err) {
+            return registryError(err)
+          }
           const pack = registry[args.name]
           if (!pack) return `Pack "${args.name}" is not installed.`
 

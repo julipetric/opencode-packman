@@ -10,6 +10,7 @@ import {
   formatPathForDisplay,
   getVaultSubdir,
   packSkillPaths,
+  parseJSONObject,
   removeSkillPaths,
   resolvePath,
 } from "../src/packs"
@@ -230,5 +231,25 @@ describe("skill path list edits", () => {
     expect(() => addSkillPaths(config as Record<string, unknown>, ["/vault/a/skills"])).toThrow(/must be an array/)
     expect(() => removeSkillPaths(config as Record<string, unknown>, ["/vault/a/skills"])).toThrow(/must be an array/)
     expect(config).toEqual(before)
+  })
+})
+
+describe("parseJSONObject", () => {
+  const file = "/home/user/.config/opencode/skill-packs.json"
+
+  test("parses a JSON object", () => {
+    expect(parseJSONObject('{ "a": { "b": 1 } }', file)).toEqual({ a: { b: 1 } })
+  })
+
+  test.each(["", "   "])("blank text %j is an empty object", text => {
+    expect(parseJSONObject(text, file)).toEqual({})
+  })
+
+  test("invalid JSON throws an error naming the file", () => {
+    expect(() => parseJSONObject('{ "a": ', file)).toThrow(`${file} is not valid JSON`)
+  })
+
+  test.each(["[]", "null", '"text"', "42", "true"])("%s is not an object and throws", text => {
+    expect(() => parseJSONObject(text, file)).toThrow(`${file} must contain a JSON object`)
   })
 })

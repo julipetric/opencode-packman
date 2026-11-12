@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 ### Fixed
 - `packman_enable` and `packman_disable` work when `skills` in `opencode.json` is a plain array of paths. Both shapes (array and object with `paths`) are supported and preserved, and enabling twice does not duplicate entries.
 - An unexpected `skills` shape, a `skills.paths` that is not an array, or an `opencode.json` that is not a valid JSON object makes enable, disable and uninstall return an explicit error and leave the file and the registry unchanged. A config that could not be parsed is no longer overwritten.
+- A `skill-packs.json` that is not valid JSON or not a JSON object makes every tool return an explicit error without writing the registry; install, update and uninstall also leave the pack files untouched. A missing registry file is still an empty registry.
 - The install message points at the `packman_enable` tool ("enable pack <name>") instead of a nonexistent `enable-pack` command, and the name-conflict message no longer offers an install override that does not exist.
 
 ## 2.0.1 - 2026-11-12

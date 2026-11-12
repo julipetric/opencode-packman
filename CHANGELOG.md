@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2.0.2 - 2026-11-12
+
+### Fixed
+- `packman_enable` and `packman_disable` work when `skills` in `opencode.json` is a plain array of paths. Both shapes (array and object with `paths`) are supported and preserved, and enabling twice does not duplicate entries.
+- An unexpected `skills` shape, a `skills.paths` that is not an array, or an `opencode.json` that is not a valid JSON object makes enable, disable and uninstall return an explicit error and leave the file and the registry unchanged. A config that could not be parsed is no longer overwritten.
+- The install message points at the `packman_enable` tool ("enable pack <name>") instead of a nonexistent `enable-pack` command, and the name-conflict message no longer offers an install override that does not exist.
+
 ## 2.0.1 - 2026-11-12
 
 ### Fixed

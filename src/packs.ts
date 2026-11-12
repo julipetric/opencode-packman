@@ -28,11 +28,12 @@ export interface DiscoveredSkillPath {
 }
 
 /**
- * Classifies a pack source. Git sources are recognised by a `git+` or `git@` prefix or a
- * `.git` suffix, npm sources by an `npm:` prefix; anything else is a local path.
+ * Classifies a pack source. Git sources are recognised by a `git+`, `git@`, `http://` or
+ * `https://` prefix or a `.git` suffix, npm sources by an `npm:` prefix; anything else is a
+ * local path.
  */
 export function detectType(source: string): PackType {
-  if (source.startsWith("git+") || source.startsWith("git@") || source.endsWith(".git")) return "git"
+  if (/^(git\+|git@|https?:\/\/)/.test(source) || source.endsWith(".git")) return "git"
   if (source.startsWith("npm:")) return "npm"
   return "local"
 }

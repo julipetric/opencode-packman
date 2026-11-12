@@ -8,8 +8,15 @@ import { CONFIG_PATH, REGISTRY_PATH } from "../../src/packs"
 
 type Call = [tool: string, args: Record<string, unknown>]
 
+// Unparsable files come back as their raw text so that tests can assert on them.
 function readJSON(path: string): unknown {
-  return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null
+  if (!existsSync(path)) return null
+  const text = readFileSync(path, "utf8")
+  try {
+    return JSON.parse(text)
+  } catch {
+    return text
+  }
 }
 
 const calls = JSON.parse(process.argv[2]) as Call[]

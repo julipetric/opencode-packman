@@ -131,7 +131,7 @@ skill-packs/impeccable/.opencode/skills/impeccable/SKILL.md
 
 Enable adds all discovered paths. Disable removes all of them. No manual path hunting needed.
 
-Packman reads and writes the `skills.paths` form of the `skills` option; it does not edit a `skills` option written as a plain array.
+Enable and disable work with either form of the `skills` option in `opencode.json` — a plain array of paths or an object with a `paths` array — and keep whichever one you use. If `skills` or the file itself has an unexpected shape (or is not valid JSON), the tool reports an error and leaves the file untouched.
 
 ## Registry
 

@@ -5,7 +5,7 @@ license: MIT
 compatibility: opencode
 metadata:
   source: https://github.com/julipetric/opencode-packman
-  version: 2.0.1
+  version: 2.0.2
 ---
 
 # Packman — Skill Pack Manager
@@ -97,7 +97,7 @@ Ask: "Enable pack <name>"
 1. Reads `~/.config/opencode/opencode.json`
 2. Auto-discovers skill paths in the pack directory
 3. Adds each discovered path to `skills.paths` (if not already present)
-4. Write back, preserving all other config
+4. Write back, preserving all other config and the shape of `skills` (plain array or object with `paths`)
 5. Updates registry: set `enabled: true`
 6. Informs the user to restart OpenCode for the change to take effect
 
@@ -108,7 +108,7 @@ Ask: "Disable pack <name>"
 1. Reads `~/.config/opencode/opencode.json`
 2. Auto-discovers skill paths for the pack
 3. Removes those paths from `skills.paths`
-4. Write back, preserving all other config
+4. Write back, preserving all other config and the shape of `skills`
 5. Updates registry: set `enabled: false`
 6. Informs the user to restart OpenCode for the change to take effect
 
@@ -185,6 +185,7 @@ Ask: "Uninstall pack <name>"
 | `packman_*` tools missing but the skill is listed | Plugin not loaded | Add `~/.config/opencode/plugins/packman.ts` (see Installation) and restart OpenCode |
 | Skill not showing up after enable | Wrong path in `skills.paths` | Use `packman_enable` which auto-discovers paths. If still broken, call `packman_list(name="<pack>")` to see discovered paths |
 | Nested skill not detected | SKILL.md not in a named subdirectory | Skills should be at `<container>/<skill-name>/SKILL.md`, not directly in the pack root |
+| "Cannot enable/disable/uninstall pack" error | `opencode.json` is not valid JSON, or `skills` is neither an array of paths nor an object with a `paths` array | Fix `~/.config/opencode/opencode.json`; Packman leaves it untouched and does not change the registry |
 | Registry file missing | Auto-created on first install | Run install again |
 | "already installed" error | Pack directory exists | Use `packman_update` or `packman_uninstall` first |
 

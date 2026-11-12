@@ -25,6 +25,27 @@ async function readJSON(path: string): Promise<Record<string, unknown> | null> {
   return null
 }
 
+/**
+ * Reads opencode.json. A missing or empty file is an empty config; a file that is not a JSON
+ * object throws, so that the tools never overwrite a config they could not read.
+ */
+async function readConfig(): Promise<Record<string, unknown>> {
+  const file = Bun.file(CONFIG_PATH)
+  if (!(await file.exists())) return {}
+  const text = await file.text()
+  if (text.trim() === "") return {}
+  let data: unknown
+  try {
+    data = JSON.parse(text)
+  } catch (err) {
+    throw new Error(`${CONFIG_PATH} is not valid JSON (${err instanceof Error ? err.message : String(err)}). Fix or remove it and try again.`)
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error(`${CONFIG_PATH} must contain a JSON object.`)
+  }
+  return data as Record<string, unknown>
+}
+
 async function writeJSON(path: string, data: unknown): Promise<void> {
   await Bun.write(path, JSON.stringify(data, null, 2) + "\n")
 }
@@ -132,17 +153,27 @@ export const PackmanPlugin: Plugin = async () => {
           const pack = registry[args.name]
           if (!pack) return `Pack "${args.name}" is not installed. Use packman_install first.`
 
-          const config = (await readJSON(CONFIG_PATH)) || {}
+          let config: Record<string, unknown>
+          try {
+            config = await readConfig()
+          } catch (err) {
+            return `Cannot enable pack "${args.name}": ${err instanceof Error ? err.message : String(err)}`
+          }
 
           const discovered = discoverSkillPaths(pack.path)
           if (discovered.length === 0) {
             return `No skill paths found in pack "${args.name}". Verify the pack contains valid skills.`
           }
 
-          const pathsToAdd = addSkillPaths(
-            config,
-            discovered.map(d => getVaultSubdir(pack.path, d.containerPath)),
-          )
+          let pathsToAdd: string[]
+          try {
+            pathsToAdd = addSkillPaths(
+              config,
+              discovered.map(d => getVaultSubdir(pack.path, d.containerPath)),
+            )
+          } catch (err) {
+            return `Cannot enable pack "${args.name}": ${err instanceof Error ? err.message : String(err)}`
+          }
 
           if (pathsToAdd.length === 0) {
             return `Pack "${args.name}" is already enabled (all skill paths are already in skills.paths).`
@@ -178,9 +209,13 @@ export const PackmanPlugin: Plugin = async () => {
           const pack = registry[args.name]
           if (!pack) return `Pack "${args.name}" is not installed.`
 
-          const config = (await readJSON(CONFIG_PATH)) || {}
-          if (removeSkillPaths(config, packSkillPaths(pack.path))) {
-            await writeJSON(CONFIG_PATH, config)
+          try {
+            const config = await readConfig()
+            if (removeSkillPaths(config, packSkillPaths(pack.path))) {
+              await writeJSON(CONFIG_PATH, config)
+            }
+          } catch (err) {
+            return `Cannot disable pack "${args.name}": ${err instanceof Error ? err.message : String(err)}`
           }
 
           pack.enabled = false
@@ -248,9 +283,13 @@ export const PackmanPlugin: Plugin = async () => {
           if (!pack) return `Pack "${args.name}" is not installed.`
 
           if (pack.enabled) {
-            const config = (await readJSON(CONFIG_PATH)) || {}
-            if (removeSkillPaths(config, packSkillPaths(pack.path))) {
-              await writeJSON(CONFIG_PATH, config)
+            try {
+              const config = await readConfig()
+              if (removeSkillPaths(config, packSkillPaths(pack.path))) {
+                await writeJSON(CONFIG_PATH, config)
+              }
+            } catch (err) {
+              return `Cannot uninstall pack "${args.name}": ${err instanceof Error ? err.message : String(err)} The pack was not removed.`
             }
           }
 

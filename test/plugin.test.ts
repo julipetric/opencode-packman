@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs"
 import { tmpdir } from "os"
 import { join } from "path"
 
@@ -137,6 +137,69 @@ describe("config editing", () => {
     )
 
     expect(disabled.config).toEqual({ theme: "dark" })
+  })
+})
+
+describe("skills given as a plain array", () => {
+  test("enable and disable edit the array and keep it an array", () => {
+    const source = join(home, "mixed")
+    writeSkill(source, "skills", "brainstorming")
+    writeSkill(source, ".opencode", "skills", "impeccable")
+    const base = join(vault(), "mixed")
+    writeConfig({ theme: "dark", skills: ["/user/own-skills", join(base, "skills")] })
+
+    const [, enabled, enabledAgain, disabled] = runTools(
+      ["packman_install", { name: "mixed", source }],
+      ["packman_enable", { name: "mixed" }],
+      ["packman_enable", { name: "mixed" }],
+      ["packman_disable", { name: "mixed" }],
+    )
+
+    expect(enabled.output).toStartWith('Enabled pack "mixed". Added 1 path(s)')
+    expect(enabled.config).toEqual({
+      theme: "dark",
+      skills: ["/user/own-skills", join(base, "skills"), join(base, ".opencode", "skills")],
+    })
+    expect(enabledAgain.output).toContain("is already enabled")
+    expect(enabledAgain.config).toEqual(enabled.config)
+    expect(disabled.config).toEqual({ theme: "dark", skills: ["/user/own-skills"] })
+    expect(disabled.registry.mixed.enabled).toBe(false)
+  })
+})
+
+describe("unexpected config", () => {
+  const unexpected: [string, string][] = [
+    ["skills is a string", JSON.stringify({ skills: "/some/path" })],
+    ["skills.paths is not an array", JSON.stringify({ skills: { paths: "/some/path" } })],
+    ["the file is not valid JSON", "{ \"theme\": \"dark\", }"],
+    ["the file holds a JSON array", "[]"],
+  ]
+
+  test.each(unexpected)("enable, disable and uninstall report an error and keep the file when %s", (_label, content) => {
+    const source = join(home, "team-skills")
+    writeSkill(source, "skills", "code-review")
+    const file = join(configDir(), "opencode.json")
+
+    // The pack is registered as enabled by hand so that uninstall also reads the config.
+    runTools(["packman_install", { name: "team", source }])
+    writeFileSync(file, content)
+    const registryPath = join(configDir(), "skill-packs.json")
+    const registry = JSON.parse(readFileSync(registryPath, "utf8"))
+    registry.team.enabled = true
+    writeFileSync(registryPath, JSON.stringify(registry))
+
+    const [enable, disable, uninstall] = runTools(
+      ["packman_enable", { name: "team" }],
+      ["packman_disable", { name: "team" }],
+      ["packman_uninstall", { name: "team" }],
+    )
+
+    expect(enable.output).toStartWith('Cannot enable pack "team":')
+    expect(disable.output).toStartWith('Cannot disable pack "team":')
+    expect(uninstall.output).toStartWith('Cannot uninstall pack "team":')
+    expect(readFileSync(file, "utf8")).toBe(content)
+    expect(disable.registry.team.enabled).toBe(true)
+    expect(existsSync(join(vault(), "team"))).toBe(true)
   })
 })
 

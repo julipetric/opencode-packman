@@ -1,5 +1,5 @@
 // Pack helpers used by the plugin tools: source detection, path handling, skill discovery
-// and edits to `skills.paths`. The plugin entry (`index.ts`) exports only the plugin function,
+// and edits to the skill path list of opencode.json. The plugin entry (`index.ts`) exports only the plugin function,
 // because OpenCode calls every export of an entry module as a plugin.
 
 import { join, resolve, isAbsolute, basename, relative } from "path"
@@ -123,34 +123,67 @@ export function checkNameConflict(
   return null
 }
 
+function describeValue(value: unknown): string {
+  if (Array.isArray(value)) return "an array"
+  if (value === null) return "null"
+  return `a ${typeof value}`
+}
+
 /**
- * Appends the given paths to `config.skills.paths`, creating the structure when missing, and
- * returns the ones that were not already present. Every other key of the config is kept.
+ * Returns the list of skill paths held by `config.skills`, which OpenCode accepts as either
+ * a plain array of paths or an object with a `paths` array. Returns null when the config has
+ * no list yet, and throws when `skills` has any other shape.
+ */
+function skillPathList(config: Record<string, unknown>): string[] | null {
+  const skills = config.skills
+  if (skills === undefined || skills === null) return null
+  if (Array.isArray(skills)) return skills as string[]
+  if (typeof skills !== "object") {
+    throw new Error(`"skills" in opencode.json must be an array of paths or an object with a "paths" array, but it is ${describeValue(skills)}.`)
+  }
+  const paths = (skills as Record<string, unknown>).paths
+  if (paths === undefined) return null
+  if (!Array.isArray(paths)) {
+    throw new Error(`"skills.paths" in opencode.json must be an array of paths, but it is ${describeValue(paths)}.`)
+  }
+  return paths as string[]
+}
+
+/**
+ * Appends the given paths to the skill path list of `config`, keeping the shape the config
+ * already has (plain `skills` array or `skills.paths`) and creating `skills.paths` when
+ * there is none. Returns the paths that were not already present. Every other key of the
+ * config is kept. Throws, leaving the config untouched, when `skills` has an unexpected shape.
  */
 export function addSkillPaths(config: Record<string, unknown>, paths: string[]): string[] {
-  if (!config.skills || typeof config.skills !== "object") config.skills = {} as Record<string, unknown>
-  const skills = config.skills as Record<string, unknown>
-  if (!Array.isArray(skills.paths)) skills.paths = []
-  const current = skills.paths as string[]
+  let list = skillPathList(config)
+  if (!list) {
+    list = []
+    const skills = config.skills as Record<string, unknown> | undefined | null
+    if (skills && typeof skills === "object") skills.paths = list
+    else config.skills = { paths: list }
+  }
 
-  const added = paths.filter(p => !current.includes(p))
-  current.push(...added)
+  const added = [...new Set(paths)].filter(p => !list.includes(p))
+  list.push(...added)
   return added
 }
 
 /**
- * Removes the given paths from `config.skills.paths`. Returns false, leaving the config
- * untouched, when it has no `skills.paths` list.
+ * Removes the given paths from the skill path list of `config`, keeping its shape. Returns
+ * false, leaving the config untouched, when it has no list. Throws when `skills` has an
+ * unexpected shape.
  */
 export function removeSkillPaths(config: Record<string, unknown>, paths: Iterable<string>): boolean {
-  const skills = config.skills as Record<string, unknown> | undefined
-  if (!skills || !Array.isArray(skills.paths)) return false
+  const list = skillPathList(config)
+  if (!list) return false
   const toRemove = new Set(paths)
-  skills.paths = (skills.paths as string[]).filter((p: string) => !toRemove.has(p))
+  const kept = list.filter(p => !toRemove.has(p))
+  list.splice(0, list.length, ...kept)
   return true
 }
 
-/** Values in `skills.paths` that belong to a pack. */
+/** Values of the skill path list that belong to a pack. */
 export function packSkillPaths(packDir: string, vaultDir: string = VAULT_DIR): string[] {
   return discoverSkillPaths(packDir).map(d => getVaultSubdir(packDir, d.containerPath, vaultDir))
 }

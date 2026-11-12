@@ -162,13 +162,20 @@ describe("checkNameConflict", () => {
   })
 })
 
-describe("skills.paths edits", () => {
+describe("skill path list edits", () => {
   test("addSkillPaths creates skills.paths and keeps the rest of the config", () => {
     const config: Record<string, unknown> = { theme: "dark" }
     const added = addSkillPaths(config, ["/vault/a/skills"])
 
     expect(added).toEqual(["/vault/a/skills"])
     expect(config).toEqual({ theme: "dark", skills: { paths: ["/vault/a/skills"] } })
+  })
+
+  test("addSkillPaths adds skills.paths to a skills object that lacks it", () => {
+    const config: Record<string, unknown> = { skills: { urls: ["https://example.com/skills/"] } }
+    addSkillPaths(config, ["/vault/a/skills"])
+
+    expect(config.skills).toEqual({ urls: ["https://example.com/skills/"], paths: ["/vault/a/skills"] })
   })
 
   test("addSkillPaths returns only the paths that were missing", () => {
@@ -179,6 +186,14 @@ describe("skills.paths edits", () => {
     expect(config.skills).toEqual({ paths: ["/vault/a/skills", "/vault/a/.opencode/skills"] })
   })
 
+  test("addSkillPaths appends to a plain skills array and keeps it an array", () => {
+    const config: Record<string, unknown> = { skills: ["/mine", "/vault/a/skills"] }
+    const added = addSkillPaths(config, ["/vault/a/skills", "/vault/a/.opencode/skills", "/vault/a/.opencode/skills"])
+
+    expect(added).toEqual(["/vault/a/.opencode/skills"])
+    expect(config.skills).toEqual(["/mine", "/vault/a/skills", "/vault/a/.opencode/skills"])
+  })
+
   test("removeSkillPaths drops the given paths and keeps the others", () => {
     const config: Record<string, unknown> = { skills: { paths: ["/mine", "/vault/a/skills"] } }
 
@@ -186,10 +201,34 @@ describe("skills.paths edits", () => {
     expect(config.skills).toEqual({ paths: ["/mine"] })
   })
 
-  test("removeSkillPaths leaves a config without skills.paths untouched", () => {
-    const config: Record<string, unknown> = { theme: "dark" }
+  test("removeSkillPaths drops the given paths from a plain skills array", () => {
+    const config: Record<string, unknown> = { theme: "dark", skills: ["/mine", "/vault/a/skills"] }
 
-    expect(removeSkillPaths(config, ["/vault/a/skills"])).toBe(false)
-    expect(config).toEqual({ theme: "dark" })
+    expect(removeSkillPaths(config, ["/vault/a/skills"])).toBe(true)
+    expect(config).toEqual({ theme: "dark", skills: ["/mine"] })
+  })
+
+  test.each([
+    ["without skills", { theme: "dark" }],
+    ["with a skills object that has no paths", { skills: { urls: [] } }],
+  ])("removeSkillPaths leaves a config %s untouched", (_label, config) => {
+    const before = structuredClone(config)
+
+    expect(removeSkillPaths(config as Record<string, unknown>, ["/vault/a/skills"])).toBe(false)
+    expect(config).toEqual(before)
+  })
+
+  test.each([
+    ["a string", { skills: "/vault/a/skills" }],
+    ["a number", { skills: 3 }],
+    ["a boolean", { skills: true }],
+    ["an object whose paths is a string", { skills: { paths: "/vault/a/skills" } }],
+    ["an object whose paths is an object", { skills: { paths: {} } }],
+  ])("both edits throw and leave the config untouched when skills is %s", (_label, config) => {
+    const before = structuredClone(config)
+
+    expect(() => addSkillPaths(config as Record<string, unknown>, ["/vault/a/skills"])).toThrow(/must be an array/)
+    expect(() => removeSkillPaths(config as Record<string, unknown>, ["/vault/a/skills"])).toThrow(/must be an array/)
+    expect(config).toEqual(before)
   })
 })

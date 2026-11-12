@@ -65,6 +65,7 @@ describe("flat layout pack", () => {
     expect(installed.output).toContain('Installed pack "team"')
     expect(installed.output).toContain("Found 2 skill(s) across 1 path(s).")
     expect(installed.output).toContain("(2 skills: code-review, release-notes)")
+    expect(installed.output).toContain('ask the agent to "enable pack team" (packman_enable)')
     expect(installed.registry.team).toMatchObject({ source, type: "local", enabled: false, path: join(vault(), "team") })
     expect(installed.config).toEqual({ theme: "dark" })
 

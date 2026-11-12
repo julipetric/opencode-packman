@@ -65,7 +65,7 @@ export const PackmanPlugin: Plugin = async () => {
 
           const conflict = checkNameConflict(name)
           if (conflict) {
-            return `Warning: pack name "${name}" conflicts with OpenCode built-in path at ${conflict}. Install anyway? Use a different name to avoid ambiguity.`
+            return `Warning: pack name "${name}" conflicts with OpenCode built-in path at ${conflict}. Use a different name.`
           }
 
           const type = detectType(source)
@@ -110,7 +110,7 @@ export const PackmanPlugin: Plugin = async () => {
                 const pathDisplay = formatPathForDisplay(packDir, d.containerPath)
                 msg += `  ${pathDisplay} (${d.skillCount} skills: ${d.skillNames.join(", ")})\n`
               }
-              msg += `\nActivate: use "enable-pack ${name}" to add the path(s) to skills.paths.`
+              msg += `\nActivate: ask the agent to "enable pack ${name}" (packman_enable) to add the path(s) to skills.paths.`
             } else {
               msg += "\nNo SKILL.md files found in this pack. Verify the source contains compatible skills."
             }

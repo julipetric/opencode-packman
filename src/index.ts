@@ -1,6 +1,6 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 import { join, basename, relative } from "path"
-import { existsSync, mkdirSync, readdirSync, rmSync, copyFileSync } from "fs"
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, copyFileSync } from "fs"
 import {
   CONFIG_PATH,
   REGISTRY_PATH,
@@ -87,7 +87,7 @@ export const PackmanPlugin: Plugin = async () => {
               rmSync(tmp, { recursive: true, force: true })
             } else {
               const src = resolvePath(source)
-              await $`cp -r ${src}/. ${packDir}`.quiet()
+              cpSync(src, packDir, { recursive: true })
             }
 
             const registry = await readRegistry()
@@ -290,7 +290,7 @@ export const PackmanPlugin: Plugin = async () => {
               rmSync(tmp, { recursive: true, force: true })
             } else {
               const src = resolvePath(pack.source)
-              await $`cp -r ${src}/. ${pack.path}`.quiet()
+              cpSync(src, pack.path, { recursive: true })
             }
 
             const discovered = discoverSkillPaths(pack.path)

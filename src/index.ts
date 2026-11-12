@@ -1,28 +1,21 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
-import { join, resolve, isAbsolute, basename, relative } from "path"
-import { homedir } from "os"
-import { existsSync, mkdirSync, readdirSync, rmSync, copyFileSync, statSync } from "fs"
-
-const CONFIG_DIR = join(homedir(), ".config", "opencode")
-const VAULT_DIR = join(CONFIG_DIR, "skill-packs")
-const REGISTRY_PATH = join(CONFIG_DIR, "skill-packs.json")
-const CONFIG_PATH = join(CONFIG_DIR, "opencode.json")
-
-type PackType = "git" | "npm" | "local"
-
-interface PackRecord {
-  source: string
-  type: PackType
-  enabled: boolean
-  path: string
-  installed_at: string
-}
-
-interface DiscoveredSkillPath {
-  containerPath: string
-  skillCount: number
-  skillNames: string[]
-}
+import { join, basename, relative } from "path"
+import { existsSync, mkdirSync, readdirSync, rmSync, copyFileSync } from "fs"
+import {
+  CONFIG_PATH,
+  REGISTRY_PATH,
+  VAULT_DIR,
+  addSkillPaths,
+  checkNameConflict,
+  detectType,
+  discoverSkillPaths,
+  formatPathForDisplay,
+  getVaultSubdir,
+  packSkillPaths,
+  removeSkillPaths,
+  resolvePath,
+  type PackRecord,
+} from "./packs"
 
 async function readJSON(path: string): Promise<Record<string, unknown> | null> {
   try {
@@ -34,86 +27,6 @@ async function readJSON(path: string): Promise<Record<string, unknown> | null> {
 
 async function writeJSON(path: string, data: unknown): Promise<void> {
   await Bun.write(path, JSON.stringify(data, null, 2) + "\n")
-}
-
-function detectType(source: string): PackType {
-  if (source.startsWith("git+") || source.startsWith("git@") || source.endsWith(".git")) return "git"
-  if (source.startsWith("npm:")) return "npm"
-  return "local"
-}
-
-function resolvePath(input: string): string {
-  if (input.startsWith("~/")) return join(homedir(), input.slice(2))
-  if (isAbsolute(input)) return input
-  return resolve(process.cwd(), input)
-}
-
-function countSkills(dir: string): number {
-  if (!existsSync(dir)) return 0
-  let count = 0
-  function walk(d: string) {
-    const entries = readdirSync(d, { withFileTypes: true })
-    for (const entry of entries) {
-      const p = join(d, entry.name)
-      if (entry.isDirectory()) walk(p)
-      else if (entry.name === "SKILL.md") count++
-    }
-  }
-  walk(dir)
-  return count
-}
-
-function discoverSkillPaths(packDir: string): DiscoveredSkillPath[] {
-  if (!existsSync(packDir)) return []
-
-  const containers = new Map<string, string[]>()
-
-  function walk(dir: string) {
-    const entries = readdirSync(dir, { withFileTypes: true })
-    for (const entry of entries) {
-      const p = join(dir, entry.name)
-      if (entry.isDirectory()) walk(p)
-      else if (entry.name === "SKILL.md") {
-        const skillDir = resolve(p, "..")
-        const skillName = basename(skillDir)
-        const containerPath = resolve(skillDir, "..")
-        const existing = containers.get(containerPath) || []
-        existing.push(skillName)
-        containers.set(containerPath, existing)
-      }
-    }
-  }
-  walk(packDir)
-
-  const results: DiscoveredSkillPath[] = []
-  for (const [containerPath, skillNames] of containers.entries()) {
-    results.push({
-      containerPath,
-      skillCount: skillNames.length,
-      skillNames: [...new Set(skillNames)].sort(),
-    })
-  }
-
-  results.sort((a, b) => {
-    const aSkills = a.containerPath.endsWith("skills") || a.containerPath.endsWith("skills\\") ? 0 : 1
-    const bSkills = b.containerPath.endsWith("skills") || b.containerPath.endsWith("skills\\") ? 0 : 1
-    if (aSkills !== bSkills) return aSkills - bSkills
-    return b.skillCount - a.skillCount
-  })
-
-  return results
-}
-
-function formatPathForDisplay(packDir: string, containerPath: string): string {
-  const rel = relative(packDir, containerPath)
-  if (!rel || rel === "." || rel.startsWith("..")) return containerPath
-  return `~/.config/opencode/skill-packs/${basename(packDir)}/${rel.replace(/\\/g, "/")}`
-}
-
-function getVaultSubdir(packDir: string, containerPath: string): string {
-  const rel = relative(packDir, containerPath)
-  if (!rel || rel === "." || rel.startsWith("..")) return containerPath
-  return join(VAULT_DIR, basename(packDir), rel)
 }
 
 async function readRegistry(): Promise<Record<string, PackRecord>> {
@@ -129,20 +42,6 @@ async function writeRegistry(data: Record<string, PackRecord>): Promise<void> {
   await writeJSON(REGISTRY_PATH, data)
   const bak = REGISTRY_PATH + ".bak"
   if (existsSync(bak)) rmSync(bak, { force: true })
-}
-
-function checkNameConflict(name: string): string | null {
-  const packDir = join(VAULT_DIR, name)
-  const builtinDirs = [
-    join(homedir(), ".config", "opencode", "skills"),
-    join(process.cwd(), ".opencode", "skills"),
-  ]
-  for (const dir of builtinDirs) {
-    if (packDir === dir || packDir.startsWith(dir)) {
-      return dir
-    }
-  }
-  return null
 }
 
 export const PackmanPlugin: Plugin = async () => {
@@ -234,28 +133,21 @@ export const PackmanPlugin: Plugin = async () => {
           if (!pack) return `Pack "${args.name}" is not installed. Use packman_install first.`
 
           const config = (await readJSON(CONFIG_PATH)) || {}
-          if (!config.skills || typeof config.skills !== "object") config.skills = {} as Record<string, unknown>
-          const skills = config.skills as Record<string, unknown>
-          if (!Array.isArray(skills.paths)) skills.paths = []
 
           const discovered = discoverSkillPaths(pack.path)
           if (discovered.length === 0) {
             return `No skill paths found in pack "${args.name}". Verify the pack contains valid skills.`
           }
 
-          const pathsToAdd: string[] = []
-          for (const d of discovered) {
-            const vaultSubdir = getVaultSubdir(pack.path, d.containerPath)
-            if (!(skills.paths as string[]).includes(vaultSubdir)) {
-              pathsToAdd.push(vaultSubdir)
-            }
-          }
+          const pathsToAdd = addSkillPaths(
+            config,
+            discovered.map(d => getVaultSubdir(pack.path, d.containerPath)),
+          )
 
           if (pathsToAdd.length === 0) {
             return `Pack "${args.name}" is already enabled (all skill paths are already in skills.paths).`
           }
 
-          ;(skills.paths as string[]).push(...pathsToAdd)
           await writeJSON(CONFIG_PATH, config)
 
           pack.enabled = true
@@ -287,13 +179,7 @@ export const PackmanPlugin: Plugin = async () => {
           if (!pack) return `Pack "${args.name}" is not installed.`
 
           const config = (await readJSON(CONFIG_PATH)) || {}
-          const skills = config.skills as Record<string, unknown> | undefined
-          if (skills && Array.isArray(skills.paths)) {
-            const discovered = discoverSkillPaths(pack.path)
-            const pathsToRemove = new Set(
-              discovered.map(d => getVaultSubdir(pack.path, d.containerPath))
-            )
-            skills.paths = (skills.paths as string[]).filter((p: string) => !pathsToRemove.has(p))
+          if (removeSkillPaths(config, packSkillPaths(pack.path))) {
             await writeJSON(CONFIG_PATH, config)
           }
 
@@ -363,13 +249,7 @@ export const PackmanPlugin: Plugin = async () => {
 
           if (pack.enabled) {
             const config = (await readJSON(CONFIG_PATH)) || {}
-            const skills = config.skills as Record<string, unknown> | undefined
-            if (skills && Array.isArray(skills.paths)) {
-              const discovered = discoverSkillPaths(pack.path)
-              const pathsToRemove = new Set(
-                discovered.map(d => getVaultSubdir(pack.path, d.containerPath))
-              )
-              skills.paths = (skills.paths as string[]).filter((p: string) => !pathsToRemove.has(p))
+            if (removeSkillPaths(config, packSkillPaths(pack.path))) {
               await writeJSON(CONFIG_PATH, config)
             }
           }

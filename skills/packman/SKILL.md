@@ -5,7 +5,7 @@ license: MIT
 compatibility: opencode
 metadata:
   source: https://github.com/julipetric/opencode-packman
-  version: 2.0.0
+  version: 2.0.1
 ---
 
 # Packman — Skill Pack Manager
@@ -27,10 +27,10 @@ Packman detects source type automatically:
 | Pattern | Type | Behavior |
 |---------|------|----------|
 | `git+https://...` or `git@github.com:...` | Git | `git clone --depth 1` |
-| `https://github.com/...` or `https://...git` | Git | `git clone --depth 1` |
+| `https://...` or `http://...` (e.g. `https://github.com/user/repo`), or any source ending in `.git` | Git | `git clone --depth 1` |
 | `npm:<package>` | npm | `npm pack && tar -xz` |
-| Absolute local path (`/home/...` or `C:\...`) | Local | `cp -r` |
-| Relative local path (`./...`) | Local | Resolve relative to cwd, `cp -r` |
+| Absolute local path (`/home/...` or `C:\...`) | Local | Recursive copy |
+| Relative local path (`./...`) | Local | Resolve relative to cwd, recursive copy |
 
 ## How To Invoke
 
@@ -72,8 +72,6 @@ skill-packs/impeccable/
   .opencode/
     skills/
       impeccable/SKILL.md       → adds: skill-packs/impeccable/.opencode/skills
-  skill/
-    SKILL.md                    ← skipped (no skill-name subdirectory)
 ```
 
 Enable adds all discovered paths. Disable removes all of them.
@@ -132,7 +130,7 @@ Ask: "Update pack <name>"
 
 1. If source is git: `git -C ~/.config/opencode/skill-packs/<name> pull`
 2. If source is npm: re-download and extract
-3. If source is local: `rsync` or `cp -r` from source
+3. If source is local: copy the source folder over the installed pack again
 
 ### Uninstall a pack
 
@@ -153,8 +151,8 @@ Ask: "Uninstall pack <name>"
     "source": "git+https://github.com/obra/superpowers.git",
     "type": "git",
     "enabled": true,
-    "path": "~/.config/opencode/skill-packs/superpowers",
-    "installed_at": "2026-05-15T10:00:00Z"
+    "path": "/home/you/.config/opencode/skill-packs/superpowers",
+    "installed_at": "2026-05-15T10:00:00.000Z"
   }
 }
 ```
@@ -184,28 +182,33 @@ Ask: "Uninstall pack <name>"
 | Problem | Likely Cause | Fix |
 |---------|-------------|-----|
 | `install-pack` not found as a command | It's an AI instruction, not a shell command | Tell the agent "install pack X from Y" |
-| Skill not showing up after enable | Wrong path in `skills.paths` | Use `packman_enable` which auto-discovers paths. If still broken, run `list-packs <name>` to see discovered paths |
-| Nested skill not detected | SKILL.md not in a named subdirectory | Skills should be at `<container>/<skill-name>/SKILL.md`, not `<container>/SKILL.md` |
+| `packman_*` tools missing but the skill is listed | Plugin not loaded | Add `~/.config/opencode/plugins/packman.ts` (see Installation) and restart OpenCode |
+| Skill not showing up after enable | Wrong path in `skills.paths` | Use `packman_enable` which auto-discovers paths. If still broken, call `packman_list(name="<pack>")` to see discovered paths |
+| Nested skill not detected | SKILL.md not in a named subdirectory | Skills should be at `<container>/<skill-name>/SKILL.md`, not directly in the pack root |
 | Registry file missing | Auto-created on first install | Run install again |
-| "already installed" error | Pack directory exists | Use `update-pack` or `uninstall-pack` first |
+| "already installed" error | Pack directory exists | Use `packman_update` or `packman_uninstall` first |
 
 ## Installation
 
-To install packman itself:
+Packman has two parts: this skill (instructions) and the plugin (the `packman_*` tools). Install both:
 
 ```bash
-# Clone the repo
+# Clone the repo into the vault
 git clone https://github.com/julipetric/opencode-packman.git ~/.config/opencode/skill-packs/opencode-packman
 
-# Add to opencode.json skills.paths
-# Edit ~/.config/opencode/opencode.json:
+# Load the plugin: a one-line file in the global plugins folder
+mkdir -p ~/.config/opencode/plugins
+echo 'export { PackmanPlugin } from "../skill-packs/opencode-packman/src/index"' > ~/.config/opencode/plugins/packman.ts
+```
+
+Then load the skill by adding its folder to `skills.paths` in `~/.config/opencode/opencode.json`:
+
+```json
 {
   "skills": {
     "paths": ["~/.config/opencode/skill-packs/opencode-packman/skills"]
   }
 }
-
-# Restart OpenCode
 ```
 
-The packman skill will now be available in your OpenCode sessions.
+Restart OpenCode. The packman skill and the `packman_*` tools are now available in your sessions.

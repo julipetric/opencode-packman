@@ -1,6 +1,11 @@
 # opencode-packman
 
+[![CI](https://github.com/julipetric/opencode-packman/actions/workflows/ci.yml/badge.svg)](https://github.com/julipetric/opencode-packman/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Skill pack manager for [OpenCode](https://opencode.ai). Install, enable, disable, list, update, and uninstall named skill collections — keeping them organized in sub-folders.
+
+**Requirements:** OpenCode 1.x (verified with 1.19.5) and `git` on your `PATH` for git sources (`npm` for npm sources). Packman targets the OpenCode 1.x plugin API (`@opencode-ai/plugin` 1.x); the OpenCode 2 plugin API is not supported. [Bun](https://bun.sh) 1.3 or newer is needed only to [develop](#development) the plugin.
 
 ## Why
 
@@ -34,23 +39,44 @@ Packman gives you:
 **Enable** = auto-discover skill paths and add them to `skills.paths` in `opencode.json`.  
 **Disable** = remove discovered paths. Files stay in the vault — no data loss.
 
+Packman has two parts: a **plugin** that registers the `packman_*` tools, and a **skill** that tells the agent when and how to call them. Install both.
+
 ## Installation
 
-```bash
-git clone https://github.com/julipetric/opencode-packman.git ~/.config/opencode/skill-packs/opencode-packman
-```
+1. Clone the repo into the vault:
 
-Add to `~/.config/opencode/opencode.json`:
+   ```bash
+   git clone https://github.com/julipetric/opencode-packman.git ~/.config/opencode/skill-packs/opencode-packman
+   ```
 
-```json
-{
-  "skills": {
-    "paths": ["~/.config/opencode/skill-packs/opencode-packman/skills"]
-  }
-}
-```
+2. Load the **skill**. Add its folder to `skills.paths` in `~/.config/opencode/opencode.json` (merge with any paths you already have):
 
-Restart OpenCode. The `packman` skill is now available.
+   ```json
+   {
+     "skills": {
+       "paths": ["~/.config/opencode/skill-packs/opencode-packman/skills"]
+     }
+   }
+   ```
+
+3. Load the **plugin** (the six `packman_*` tools). OpenCode loads every `.ts` or `.js` file in `~/.config/opencode/plugins/` at startup, so create `~/.config/opencode/plugins/packman.ts` with a single line:
+
+   ```ts
+   export { PackmanPlugin } from "../skill-packs/opencode-packman/src/index"
+   ```
+
+   or from a shell:
+
+   ```bash
+   mkdir -p ~/.config/opencode/plugins
+   echo 'export { PackmanPlugin } from "../skill-packs/opencode-packman/src/index"' > ~/.config/opencode/plugins/packman.ts
+   ```
+
+4. Restart OpenCode. The `packman` skill is listed and the `packman_install`, `packman_enable`, `packman_disable`, `packman_list`, `packman_uninstall` and `packman_update` tools are available. OpenCode installs the plugin's `@opencode-ai/plugin` dependency itself on first start.
+
+On Windows, `~` is your user folder (`C:\Users\<you>`); Packman always uses `<user folder>\.config\opencode`.
+
+The skill alone only gives the agent instructions, and the plugin alone gives it tools without guidance, so enable both.
 
 ## Usage
 
@@ -64,6 +90,18 @@ Tell your agent what to do in plain language:
 | "List packs" | Shows installed packs with status and skill counts |
 | "Update pack superpowers" | Pulls latest changes |
 | "Uninstall pack GSD" | Disables, deletes files, removes registry entry |
+
+`List packs` returns one line per pack — `✓` enabled, `○` disabled:
+
+```
+Installed packs (2):
+  ✓ superpowers — 14 skills (git)
+  ○ impeccable — 1 skills (git)
+
+Use packman_enable <name> or packman_disable <name> to toggle.
+```
+
+Ask for a single pack ("List pack superpowers") to see its source, status, install path and every discovered skill path with the skill names.
 
 ### Supported Sources
 
@@ -93,6 +131,8 @@ skill-packs/impeccable/.opencode/skills/impeccable/SKILL.md
 
 Enable adds all discovered paths. Disable removes all of them. No manual path hunting needed.
 
+Packman reads and writes the `skills.paths` form of the `skills` option; it does not edit a `skills` option written as a plain array.
+
 ## Registry
 
 Installed packs are tracked in `~/.config/opencode/skill-packs.json` (auto-created on first install):
@@ -103,21 +143,32 @@ Installed packs are tracked in `~/.config/opencode/skill-packs.json` (auto-creat
     "source": "git+https://github.com/obra/superpowers.git",
     "type": "git",
     "enabled": true,
-    "path": "~/.config/opencode/skill-packs/superpowers",
-    "installed_at": "2026-05-15T10:00:00Z"
+    "path": "/home/you/.config/opencode/skill-packs/superpowers",
+    "installed_at": "2026-05-15T10:00:00.000Z"
   }
 }
 ```
 
+## Development
+
+```bash
+git clone https://github.com/julipetric/opencode-packman.git
+cd opencode-packman
+bun install
+bun test             # unit tests plus tool-level tests that run in a temp home directory
+bun run typecheck    # tsc --noEmit
+```
+
+- `src/index.ts` is the plugin entry. It exports only `PackmanPlugin`, because OpenCode treats every export of a plugin entry as a plugin.
+- `src/packs.ts` holds the pure helpers: source detection, path resolution, skill discovery and `skills.paths` edits.
+- `test/` covers the helpers with temp directories for both layouts, and runs the plugin tools in a subprocess whose home directory is a temp folder, so nothing touches your real `~/.config/opencode`.
+
+CI runs the typecheck and the tests on Linux and Windows for every push and pull request.
+
 ## Changelog
 
-### 2.0.0
-- **Skill path auto-discovery**: packs no longer assumed flat `skills/` layout — nested structures (`.opencode/skills/`, etc.) are detected and handled automatically
-- **Smarter enable/disable**: uses discovered paths instead of blindly adding the repo root
-- **Rich install output**: shows every discovered path with per-path skill count and names
-- **Troubleshooting guide**: added in SKILL.md for common issues
-- **Docs clarity**: commands are now clearly documented as AI agent instructions, not shell commands
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-MIT
+[MIT](LICENSE)

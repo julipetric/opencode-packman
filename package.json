@@ -18,6 +18,10 @@
     "README.md",
     "LICENSE"
   ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
   "keywords": [
     "opencode",
     "plugin",
